@@ -80,7 +80,7 @@ enum NightGrade {
     ///
     /// The model finds sunset and overcast skies the heuristic misses, and the
     /// heuristic catches the thin bright gaps between branches and rooftops that
-    /// a 448 pixel map rounds off. Whichever claims a pixel wins.
+    /// a 512 pixel map rounds off. Whichever claims a pixel wins.
     static func skyMask(of image: CIImage, segmented: CIImage) -> CIImage {
         let widened = DarkVariant.multiply(
             DarkVariant.scale(segmented, by: -1, bias: 1),

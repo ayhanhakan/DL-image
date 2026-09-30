@@ -73,16 +73,18 @@ photo stays readable.
 ## What it sees
 
 A Core ML segmentation model labels every pixel before anything is darkened. The
-model is DETR ResNet-50 panoptic, the conversion Apple publishes, running on 200
-COCO classes. Each class carries its own share of the darkening:
+model is UperNet with a ConvNeXt-Tiny backbone, trained on ADE20K and converted
+to Core ML by `tools/convert-model.py`. ADE20K is a scene parsing set, so sky,
+mountain, water, tree, building and road are all classes of their own. Each one
+carries its own share of the darkening:
 
 | Class | Share |
 | --- | --- |
 | Sky | 0.40 |
-| Snow, sea, river, water | 0.55 to 0.65 |
-| Sand, mountain, rock, dirt | 0.85 to 0.95 |
-| Grass, tree, potted plant | 1.15 to 1.20 |
-| Building, house, roof, wall | 1.25 to 1.30 |
+| Water, sea, river, lake, waterfall | 0.65 to 0.70 |
+| Sand, mountain, rock, hill, earth | 0.85 to 0.95 |
+| Grass, plant, tree, palm | 1.15 to 1.20 |
+| Building, house, skyscraper, wall | 1.25 to 1.30 |
 | Lamps and other light sources | 0.12 |
 
 So a landscape keeps its sky and loses its foreground, and a city keeps its lit
@@ -92,7 +94,7 @@ segmentation instead, and they keep their daylight look in both modes.
 
 The night sky mask is the segmented sky widened by a blue heuristic. The model
 finds overcast and sunset skies the heuristic misses, and the heuristic catches
-the thin gaps between branches and rooftops that a 448 pixel map rounds off.
+the thin gaps between branches and rooftops that a 512 pixel map rounds off.
 
 ## Wallpaper rotators
 
@@ -232,3 +234,7 @@ request that touches the darkening math.
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+The bundled segmentation model comes from
+[openmmlab/upernet-convnext-tiny](https://huggingface.co/openmmlab/upernet-convnext-tiny),
+which is MIT licensed as well.

@@ -6,10 +6,11 @@ import Vision
 /// Labels every pixel of the wallpaper, so each kind of surface can take its own
 /// amount of darkening.
 ///
-/// The model is DETR ResNet-50 panoptic, converted to Core ML by Apple. It reads
-/// a 448x448 image and returns one class index per pixel over the 200 COCO
-/// panoptic classes, which include sky, tree, mountain, water, building and
-/// person. Those are the classes a wallpaper is made of.
+/// The model is UperNet with a ConvNeXt-Tiny backbone, trained on ADE20K and
+/// converted to Core ML here. It reads a 512x512 image and returns one class
+/// index per pixel over 150 classes. ADE20K is a scene parsing set, so sky,
+/// mountain, water, tree, building and road are all classes of their own, which
+/// is what a wallpaper is made of.
 enum Segmentation {
 
     /// The three maps the engine needs, all at the size of the input image.
@@ -22,33 +23,35 @@ enum Segmentation {
         let protected: CIImage
     }
 
-    static let side = 448
+    static let side = 512
 
     /// Darkening weight per class. 1.0 is the plain amount, below it the surface
     /// is spared, above it the surface goes darker than the rest of the image.
     ///
     /// Sky keeps most of its light because a black sky looks like a hole. Foliage
     /// and roads take the full amount, lit facades take more, and lamps are
-    /// nearly untouched. People come from Vision instead: this model calls desert
-    /// dunes people often enough that its person class cannot be trusted.
+    /// nearly untouched. People come from Vision instead: a dune reads as a
+    /// person often enough that the class cannot be trusted on its own.
     static let weights: [Int32: Double] = [
-        187: 0.40,  // sky
-        155: 0.65, 148: 0.65, 178: 0.65,  // sea, river, water
-        159: 0.55, 154: 0.85,  // snow, sand
-        192: 0.90, 198: 0.90, 194: 0.95, 125: 0.95,  // mountain, rock, dirt, gravel
-        184: 1.20, 193: 1.15, 119: 1.00, 64: 1.15,  // tree, grass, flower, potted plant
-        197: 1.30, 128: 1.30, 151: 1.30,  // building, house, roof
-        171: 1.25, 175: 1.25, 199: 1.25, 176: 1.25, 177: 1.25,  // walls
-        181: 0.70, 180: 0.70,  // windows, which are the lit part of a facade
-        149: 1.10, 191: 1.10, 190: 1.10, 144: 1.10, 147: 1.10,  // road, pavement, floor
-        185: 1.15, 95: 1.15,  // fence, bridge
-        130: 0.12,  // light
+        2: 0.40,  // sky
+        21: 0.65, 26: 0.65, 60: 0.65, 128: 0.65, 113: 0.70,  // water, sea, river, lake, waterfall
+        46: 0.85,  // sand
+        16: 0.90, 34: 0.90, 68: 0.92, 13: 0.95, 94: 0.95,  // mountain, rock, hill, earth, land
+        4: 1.20, 72: 1.20, 9: 1.15, 17: 1.15, 29: 1.10, 66: 1.00,  // tree, palm, grass, plant, field, flower
+        1: 1.30, 25: 1.30, 48: 1.30, 79: 1.25, 84: 1.25,  // building, house, skyscraper, hovel, tower
+        0: 1.25, 42: 1.20,  // wall, column
+        8: 0.70, 14: 0.85,  // windowpane, door
+        6: 1.10, 11: 1.10, 52: 1.10, 3: 1.10, 54: 1.10, 91: 1.10,  // road, sidewalk, path, floor, runway, dirt track
+        32: 1.15, 61: 1.15, 38: 1.15, 95: 1.15,  // fence, bridge, railing, bannister
+        36: 0.12, 82: 0.12, 87: 0.12, 85: 0.12, 134: 0.12,  // lamp, light, streetlight, chandelier, sconce
     ]
     static let defaultWeight: Double = 1.00
     static let weightRange: Double = 1.35  // so the stored map fits in 0...1
 
-    static let skyClass: Int32 = 187
-    static let lightClass: Int32 = 130
+    static let skyClass: Int32 = 2
+    /// Anything that gives off light of its own, which a night version should
+    /// leave alone.
+    static let lightClasses: Set<Int32> = [36, 82, 87, 85, 134, 136]
 
     nonisolated(unsafe) private static var cached: MLModel?
 
@@ -84,10 +87,8 @@ enum Segmentation {
             try? FileManager.default.removeItem(at: compiled)
             try FileManager.default.moveItem(at: built, to: compiled)
         }
-        // ponytail: CPU and GPU only. The INT8 weights trip the Neural Engine
-        // compiler on this build of macOS, and the whole run aborts.
         let configuration = MLModelConfiguration()
-        configuration.computeUnits = .cpuOnly
+        configuration.computeUnits = .all
         let model = try MLModel(contentsOf: compiled, configuration: configuration)
         cached = model
         return model
@@ -95,43 +96,6 @@ enum Segmentation {
 
     /// Returns nil when the model cannot run, and the engine falls back to the
     /// luminance only path.
-    /// Everything under open sky counts as sky.
-    ///
-    /// The model calls a lit cloud something else often enough to matter, and a
-    /// hole in the mask reads as a glowing patch once the sky around it is
-    /// pulled down. So in a column that starts out as sky, every row down to the
-    /// skyline is filled in.
-    static func fillSkyHoles(_ sky: inout [Float], gap: Int = 24, grow: Int = 3) {
-        // How far down the sky reaches in each column. The walk steps over short
-        // interruptions, which is what a cloud is. A long one is the ground.
-        var bottom = [Int](repeating: -1, count: side)
-        for x in 0..<side where sky[x] > 0.5 {
-            var y = 0
-            while y < side {
-                if sky[y * side + x] > 0.5 { bottom[x] = y; y += 1; continue }
-                var run = 0
-                while y + run < side, sky[(y + run) * side + x] < 0.5 { run += 1 }
-                if run > gap { break }
-                y += run
-            }
-        }
-        // A skyline moves smoothly across the frame. One column that ran much
-        // deeper than its neighbours hangs off the cloud bank like a drip, so
-        // the median of a small window is used instead.
-        let smoothed = (0..<side).map { x -> Int in
-            let w = stride(from: max(0, x - 14), through: min(side - 1, x + 14), by: 1).map { bottom[$0] }.sorted()
-            return w[w.count / 2]
-        }
-        for x in 0..<side {
-            // Grown a little past the skyline. Bright backlit haze left outside
-            // the mask keeps the daylight treatment and outlines the silhouette;
-            // a few darkened rows of ground cost nothing.
-            let end = min(smoothed[x] + grow, side - 1)
-            if end < 0 { continue }
-            for y in 0...end { sky[y * side + x] = 1 }
-        }
-    }
-
     static func maps(for image: CIImage) -> Maps? {
         guard let classes = classify(image) else { return nil }
 
@@ -143,13 +107,11 @@ enum Segmentation {
             let id = classes[i]
             weight[i] = Float((weights[id] ?? defaultWeight) / weightRange)
             if id == skyClass { sky[i] = 1 }
-            if id == lightClass { protected[i] = 1 }
+            if lightClasses.contains(id) { protected[i] = 1 }
         }
 
-        fillSkyHoles(&sky)
-
         // Class edges are hard, and a hard edge in the darkness map shows up as a
-        // cut across the wallpaper. Smooth the map here, while it is still 448
+        // cut across the wallpaper. Smooth the map here, while it is still 512
         // pixels: a Core Image blur on the upscaled version leaves a pale band
         // along the top edge that no amount of clamping gets rid of.
         func spread(_ values: [Float], gain: Double) -> CIImage {
@@ -177,7 +139,7 @@ enum Segmentation {
     }
 
     /// Everybody in the frame, from Vision's own person segmentation. It knows a
-    /// person from a sand dune, which the panoptic model does not.
+    /// person from a sand dune, which the scene parsing model does not.
     static func peopleMask(for image: CIImage) -> CIImage? {
         let request = VNGeneratePersonSegmentationRequest()
         request.qualityLevel = .balanced
@@ -191,7 +153,7 @@ enum Segmentation {
             radius: Float(min(image.extent.width, image.extent.height) / 200))
     }
 
-    /// Class index per pixel, 448x448, row major from the top left.
+    /// Class index per pixel, 512x512, row major from the top left.
     static func classify(_ image: CIImage) -> [Int32]? {
         do {
             let request = VNCoreMLRequest(model: try VNCoreMLModel(for: model()))
