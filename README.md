@@ -142,7 +142,7 @@ switching to Dark Mode only swaps a file instead of rendering one.
 - [x] Supply your own dark image
 - [x] Pick up wallpapers other apps set
 - [ ] Preview before applying
-- [ ] Launch at login
+- [x] Open at login
 
 **v2: image understanding**
 
@@ -211,6 +211,7 @@ The same binary runs without the UI, which is how the darkening is tuned:
 .build/release/AIWallpaper --generate photo.jpg out.heic 0.55        # mean luma before and after
 .build/release/AIWallpaper --probe out.heic                          # edge and center samples
 .build/release/AIWallpaper --classes photo.jpg                       # what the model saw
+/Applications/AIWallpaper.app/Contents/MacOS/AIWallpaper --login on   # on | off, or read the state
 .build/debug/AIWallpaper --selftest                                  # asserts on the pipeline
 AIW_MAP=map.heic .build/release/AIWallpaper --generate photo.jpg out.heic
 AIW_SKY=sky.heic .build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night

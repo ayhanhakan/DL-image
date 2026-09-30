@@ -1,8 +1,22 @@
 import CoreImage
 import Foundation
+import ServiceManagement
 
 /// Headless entry points, so the pipeline can be run and checked without the UI.
 enum CLI {
+
+    /// `AIWallpaper --login [on|off]`, the only way to check the login item
+    /// without opening the menu.
+    static func login() {
+        let service = SMAppService.mainApp
+        switch CommandLine.arguments.dropFirst(2).first {
+        case "on": try! service.register()
+        case "off": try! service.unregister()
+        case let other?: print("usage: AIWallpaper --login [on|off], not \(other)"); exit(2)
+        case nil: break
+        }
+        print("login item: \(service.status.rawValue == 1 ? "enabled" : "status \(service.status.rawValue)")")
+    }
 
     /// `AIWallpaper --generate <input> [output] [darkness]`
     static func generate() {

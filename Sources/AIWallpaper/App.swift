@@ -9,6 +9,7 @@ enum Entry {
         case "--selftest": CLI.selftest()
         case "--probe": CLI.probe()
         case "--classes": CLI.classes()
+        case "--login": CLI.login()
         default: AIWallpaperApp.main()
         }
     }
@@ -63,6 +64,7 @@ struct MenuView: View {
             }
 
             Toggle("Follow Dark Mode", isOn: $manager.followsAppearance)
+            Toggle("Open at login", isOn: $manager.launchesAtLogin)
 
             HStack {
                 Button("Apply now") { manager.apply() }

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ServiceManagement
 import UniformTypeIdentifiers
 
 /// Keeps the original wallpaper, generates the dark variant and swaps the two
@@ -18,6 +19,11 @@ final class WallpaperManager: ObservableObject {
     @Published var style = DarkVariant.Style(
         rawValue: UserDefaults.standard.string(forKey: "style") ?? "") ?? .dim {
         didSet { UserDefaults.standard.set(style.rawValue, forKey: "style"); apply() }
+    }
+    /// macOS owns this flag, so it is read back from the service instead of
+    /// being stored alongside the other settings.
+    @Published var launchesAtLogin = SMAppService.mainApp.status == .enabled {
+        didSet { setLoginItem(launchesAtLogin) }
     }
     @Published var followsAppearance = UserDefaults.standard.object(forKey: "follows") as? Bool ?? true {
         didSet { UserDefaults.standard.set(followsAppearance, forKey: "follows"); apply() }
@@ -73,6 +79,15 @@ final class WallpaperManager: ObservableObject {
         else { return }
         original = url
         apply()
+    }
+
+    func setLoginItem(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+        } catch {
+            status = "Login item failed: \(error.localizedDescription)"
+        }
     }
 
     static func isUsableOriginal(_ url: URL) -> Bool {
