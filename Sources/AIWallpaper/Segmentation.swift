@@ -95,6 +95,43 @@ enum Segmentation {
 
     /// Returns nil when the model cannot run, and the engine falls back to the
     /// luminance only path.
+    /// Everything under open sky counts as sky.
+    ///
+    /// The model calls a lit cloud something else often enough to matter, and a
+    /// hole in the mask reads as a glowing patch once the sky around it is
+    /// pulled down. So in a column that starts out as sky, every row down to the
+    /// skyline is filled in.
+    static func fillSkyHoles(_ sky: inout [Float], gap: Int = 24, grow: Int = 3) {
+        // How far down the sky reaches in each column. The walk steps over short
+        // interruptions, which is what a cloud is. A long one is the ground.
+        var bottom = [Int](repeating: -1, count: side)
+        for x in 0..<side where sky[x] > 0.5 {
+            var y = 0
+            while y < side {
+                if sky[y * side + x] > 0.5 { bottom[x] = y; y += 1; continue }
+                var run = 0
+                while y + run < side, sky[(y + run) * side + x] < 0.5 { run += 1 }
+                if run > gap { break }
+                y += run
+            }
+        }
+        // A skyline moves smoothly across the frame. One column that ran much
+        // deeper than its neighbours hangs off the cloud bank like a drip, so
+        // the median of a small window is used instead.
+        let smoothed = (0..<side).map { x -> Int in
+            let w = stride(from: max(0, x - 14), through: min(side - 1, x + 14), by: 1).map { bottom[$0] }.sorted()
+            return w[w.count / 2]
+        }
+        for x in 0..<side {
+            // Grown a little past the skyline. Bright backlit haze left outside
+            // the mask keeps the daylight treatment and outlines the silhouette;
+            // a few darkened rows of ground cost nothing.
+            let end = min(smoothed[x] + grow, side - 1)
+            if end < 0 { continue }
+            for y in 0...end { sky[y * side + x] = 1 }
+        }
+    }
+
     static func maps(for image: CIImage) -> Maps? {
         guard let classes = classify(image) else { return nil }
 
@@ -108,6 +145,8 @@ enum Segmentation {
             if id == skyClass { sky[i] = 1 }
             if id == lightClass { protected[i] = 1 }
         }
+
+        fillSkyHoles(&sky)
 
         // Class edges are hard, and a hard edge in the darkness map shows up as a
         // cut across the wallpaper. Smooth the map here, while it is still 448

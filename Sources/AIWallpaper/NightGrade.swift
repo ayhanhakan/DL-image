@@ -12,15 +12,14 @@ enum NightGrade {
 
     /// sRGB values, because that is how the eye reads them; Core Image works in
     /// linear light, so everything is converted on the way in.
-    static let shadowColor = (r: 0.07, g: 0.09, b: 0.18)
-    static let highlightColor = (r: 0.86, g: 0.89, b: 0.97)
+    static let shadowColor = (r: 0.06, g: 0.08, b: 0.20)
+    static let highlightColor = (r: 0.72, g: 0.76, b: 0.90)
 
     static func make(from input: CIImage, darkness: Double,
                      maps: Segmentation.Maps? = nil) throws -> CIImage {
         // 1. Luminance of the original, pulled down with a gamma curve. Lit
         //    surfaces stay readable, shadows fall away.
-        let lum = DarkVariant.luminanceMap(of: input)
-            .applyingFilter("CIGammaAdjust", parameters: ["inputPower": 1.2 + 1.2 * darkness])
+        let lum = shoulder(DarkVariant.luminanceMap(of: input), darkness: darkness)
 
         // 2. Map that luminance onto the night ramp: navy in the shadows, cool
         //    white in the highlights.
@@ -34,12 +33,12 @@ enum NightGrade {
                 "inputNeutral": CIVector(x: 6500, y: 0),
                 "inputTargetNeutral": CIVector(x: 4200, y: 15),
             ])
-            .applyingFilter("CIExposureAdjust", parameters: ["inputEV": -2.0 - 1.5 * darkness])
-        var night = mix(moonlit, with: residue, amount: 0.35)
+            .applyingFilter("CIExposureAdjust", parameters: ["inputEV": -1.6 - 1.0 * darkness])
+        var night = mix(moonlit, with: residue, amount: 0.28)
 
-        // 4. Swap the daylight sky for a night one.
+        // 4. Push the sky further into the night than the ground.
         let mask = maps.map { skyMask(of: input, segmented: $0.sky) } ?? skyMask(of: input)
-        night = blend(nightSky(for: input), over: night, mask: mask)
+        night = blend(nightSky(from: night, darkness: darkness), over: night, mask: mask)
 
         // 5. People and lamps keep their own light, dimmed but not regraded, so
         //    faces still read as faces.
@@ -51,6 +50,26 @@ enum NightGrade {
         }
 
         return night.cropped(to: input.extent)
+    }
+
+    /// Shadows down, highlights rolled off.
+    ///
+    /// The top end of the curve is flat, so two bright neighbours end up closer
+    /// together than they started. A gamma keeps the ratio between them and the
+    /// ramp then stretches it, which turns a backlit haze along a ridge into a
+    /// glowing outline.
+    static func shoulder(_ luminance: CIImage, darkness: Double) -> CIImage {
+        let depth = 1.0 - 0.45 * darkness
+        func point(_ x: Double, _ y: Double) -> CIVector {
+            CIVector(x: x, y: y * depth)
+        }
+        return luminance.applyingFilter("CIToneCurve", parameters: [
+            "inputPoint0": point(0.00, 0.00),
+            "inputPoint1": point(0.06, 0.03),
+            "inputPoint2": point(0.20, 0.16),
+            "inputPoint3": point(0.50, 0.40),
+            "inputPoint4": point(1.00, 0.52),
+        ])
     }
 
     // MARK: - Sky
@@ -66,7 +85,11 @@ enum NightGrade {
         let widened = DarkVariant.multiply(
             DarkVariant.scale(segmented, by: -1, bias: 1),
             DarkVariant.scale(skyMask(of: image), by: -1, bias: 1))
-        let mask = clamp(DarkVariant.scale(widened, by: -1, bias: 1)).cropped(to: image.extent)
+        // Steep on purpose. A soft edge leaves a band along the skyline that is
+        // only half darkened, and on a backlit ridge that band is the brightest
+        // thing in the frame.
+        let union = DarkVariant.scale(widened, by: -1, bias: 1)
+        let mask = clamp(DarkVariant.scale(union, by: 6, bias: -2.5)).cropped(to: image.extent)
         if let debugSkyURL { try? DarkVariant.write(mask, to: debugSkyURL) }
         return mask
     }
@@ -99,24 +122,24 @@ enum NightGrade {
         return mask
     }
 
-    static func nightSky(for image: CIImage) -> CIImage {
-        let extent = image.extent
-        // Clouds and gradients of the original sky survive as brightness. The
-        // mask covers the whole sky now, so this is the only thing keeping the
-        // clouds in the picture.
-        let structure = DarkVariant.scale(
-            DarkVariant.luminanceMap(of: image), by: 1.00, bias: 0.40)
-
-        let gradient = CIFilter.linearGradient()
-        gradient.point0 = CGPoint(x: 0, y: extent.height)
-        gradient.color0 = srgb(0.07, 0.08, 0.16)
-        gradient.point1 = CGPoint(x: 0, y: extent.height * 0.45)
-        gradient.color1 = srgb(0.18, 0.21, 0.32)
-
+    /// The graded sky, tinted and pulled down one more stop.
+    ///
+    /// Everything here starts from the image itself, so the clouds stay and the
+    /// two sides of the mask edge still look like each other. Paint a gradient
+    /// over the sky instead and the clouds go with it, while the edge turns into
+    /// a halo wherever the mask is soft or slightly wrong.
+    static func nightSky(from graded: CIImage, darkness: Double) -> CIImage {
+        // ponytail: no vertical gradient. Darkening the top of the sky lifts the
+        // horizon by comparison, and on a backlit ridge that reads as a glowing
+        // outline around the silhouette.
         // ponytail: no stars. Thresholded CIRandomGenerator reads as grain at
         // wallpaper resolution; real points need a sprite pass, and the sky
         // looks right without them.
-        return DarkVariant.multiply(gradient.outputImage ?? CIImage(color: .black), structure)
+        // Gentle: the bigger the step across the mask edge, the more a soft or
+        // slightly wrong edge glows along the skyline.
+        return graded
+            .applyingFilter("CIExposureAdjust", parameters: ["inputEV": -0.7 - 1.1 * darkness])
+            .cropped(to: graded.extent)
     }
 
     // MARK: - Helpers

@@ -10,7 +10,7 @@ import Vision
 /// map -> multiply in Core Image's linear working space -> HEIC.
 enum DarkVariant {
 
-    static let algorithmVersion = 4
+    static let algorithmVersion = 5
 
     /// How far the dark variant goes: a dimmed version of the same daylight, or
     /// the same scene at night.
