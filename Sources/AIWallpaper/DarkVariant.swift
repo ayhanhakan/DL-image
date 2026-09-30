@@ -161,7 +161,24 @@ enum DarkVariant {
         }
         let dark = try make(from: input, darkness: darkness, style: style)
         try write(dark, to: output)
+        prune()
         return output
+    }
+
+    /// A rotator hands the app a new photo every few hours and each one leaves a
+    /// rendered file behind, so the oldest are dropped once there are enough.
+    private static func prune(keeping limit: Int = 8) {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: supportDirectory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let heics = files.filter { $0.pathExtension == "heic" }
+        guard heics.count > limit else { return }
+        let date = { (url: URL) in
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                ?? .distantPast
+        }
+        for url in heics.sorted(by: { date($0) > date($1) }).dropFirst(limit) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     static func write(_ image: CIImage, to url: URL) throws {
