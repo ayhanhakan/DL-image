@@ -6,8 +6,9 @@ APP=.build/AIWallpaper.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/AIWallpaper "$APP/Contents/MacOS/"
-# Bundle.module looks next to the executable, so the segmentation model goes there.
-cp -R .build/release/AIWallpaper_AIWallpaper.bundle "$APP/Contents/MacOS/"
+# The segmentation model goes where an app bundle keeps its resources.
+mkdir -p "$APP/Contents/Resources"
+cp -R .build/release/AIWallpaper_AIWallpaper.bundle "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

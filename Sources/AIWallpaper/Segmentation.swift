@@ -53,14 +53,31 @@ enum Segmentation {
     nonisolated(unsafe) private static var cached: MLModel?
 
     /// Compiles the bundled model once and keeps it for the life of the process.
+    /// `Bundle.module` traps when it cannot find the resource bundle, and it
+    /// only ever looks inside the main bundle's Resources, which is nowhere near
+    /// where a menu bar app keeps it. Both locations are searched by hand so a
+    /// missing model turns the segmentation off instead of killing the app.
+    static func modelSource() -> URL? {
+        let roots = [
+            Bundle.main.resourceURL,
+            Bundle.main.executableURL?.deletingLastPathComponent(),
+            Bundle.main.bundleURL,
+        ].compactMap { $0 }
+        for root in roots {
+            let url = root
+                .appendingPathComponent("AIWallpaper_AIWallpaper.bundle", isDirectory: true)
+                .appendingPathComponent("Segmentation.mlpackage", isDirectory: true)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
     static func model() throws -> MLModel {
         if let cached { return cached }
-        guard let source = Bundle.module.url(forResource: "Segmentation", withExtension: "mlpackage")
-        else { throw CocoaError(.fileNoSuchFile) }
-
         let compiled = DarkVariant.supportDirectory
             .appendingPathComponent("Segmentation.mlmodelc", isDirectory: true)
         if !FileManager.default.fileExists(atPath: compiled.path) {
+            guard let source = modelSource() else { throw CocoaError(.fileNoSuchFile) }
             let built = try MLModel.compileModel(at: source)
             try FileManager.default.createDirectory(
                 at: DarkVariant.supportDirectory, withIntermediateDirectories: true)
