@@ -94,6 +94,14 @@ The night sky mask is the segmented sky widened by a blue heuristic. The model
 finds overcast and sunset skies the heuristic misses, and the heuristic catches
 the thin gaps between branches and rooftops that a 448 pixel map rounds off.
 
+## Wallpaper rotators
+
+If something else changes your wallpaper on a schedule, like
+[Irvue](https://irvue.tumblr.com), the app takes whatever it finds on the
+desktop as the new original and generates a dark version for it. macOS sends no
+notification when the wallpaper changes, so the desktop is checked every 20
+seconds. Generated files are skipped, so the app never darkens its own output.
+
 ## Your own dark image
 
 Some photos already have a night version, and a real one beats anything the
@@ -132,6 +140,7 @@ switching to Dark Mode only swaps a file instead of rendering one.
 - [x] Semantic segmentation (Core ML) with per class darkening
 - [x] Person protection (Vision)
 - [x] Supply your own dark image
+- [x] Pick up wallpapers other apps set
 - [ ] Preview before applying
 - [ ] Launch at login
 

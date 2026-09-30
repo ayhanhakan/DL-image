@@ -27,6 +27,8 @@ final class WallpaperManager: ObservableObject {
         didSet { UserDefaults.standard.set(original?.path, forKey: "original") }
     }
 
+    private var watcher: Timer?
+
     /// A Dark Mode image the user supplied. When it is set, nothing is
     /// generated: some photos have a real night version, and a real one beats
     /// anything the engine can infer.
@@ -51,6 +53,25 @@ final class WallpaperManager: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.apply() }
         }
+        apply()
+        watch()
+    }
+
+    /// Wallpaper rotators like Irvue put a new photo on the desktop on their own
+    /// schedule and there is no notification for it, so the desktop is polled.
+    /// Whatever they set becomes the new original and gets its own dark version.
+    private func watch() {
+        watcher = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.adoptDesktopImage() }
+        }
+    }
+
+    private func adoptDesktopImage() {
+        guard let url = NSScreen.main.flatMap({ NSWorkspace.shared.desktopImageURL(for: $0) }),
+              Self.isUsableOriginal(url),
+              url != original, url != darkImage
+        else { return }
+        original = url
         apply()
     }
 
