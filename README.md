@@ -28,6 +28,22 @@ Light Mode ──> original.heic
 Dark Mode  ──> analysis ──> darkness map ──> dark.heic
 ```
 
+## Two modes
+
+**Dim** keeps the daylight and takes the brightness down where it helps, so the
+photo still looks like the photo.
+
+**Night** turns the same daylight scene into a night version of itself. Warm
+light is what makes an image read as daytime, so dimming alone leaves a grey
+afternoon. Night collapses the colors onto a cool ramp, navy in the shadows and
+moonlit white in the highlights, keeps about a third of the original color so
+the place is still recognisable, and swaps the blue sky for a night sky that
+keeps its own clouds. This is the day for night grade film crews shoot, done per
+pixel from the luminance of the original.
+
+On Apple's own Mojave pair, the generated night version lands close to the one
+they photographed at night.
+
 ## How it works
 
 ```
@@ -80,6 +96,7 @@ switching to Dark Mode only swaps a file instead of rendering one.
 - [x] Set the desktop image (`NSWorkspace`)
 - [x] Cache
 - [x] Multi-monitor
+- [x] Night mode: day for night grade and sky replacement
 - [ ] Preview before applying
 - [ ] Launch at login
 
@@ -87,7 +104,7 @@ switching to Dark Mode only swaps a file instead of rendering one.
 
 - [ ] Semantic segmentation
 - [ ] Face and object detection
-- [ ] Sky detection
+- [x] Sky detection (heuristic; a real model is still v2 work)
 - [ ] Foreground/background separation
 - [ ] Desktop icon area optimization
 - [ ] Local contrast preservation
@@ -143,14 +160,16 @@ launch it adopts the wallpaper already on the desktop.
 The same binary runs without the UI, which is how the darkening is tuned:
 
 ```sh
+.build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night   # dim | night
 .build/release/AIWallpaper --generate photo.jpg out.heic 0.55   # prints mean luma before and after
 .build/release/AIWallpaper --probe out.heic                     # edge and center samples
 .build/debug/AIWallpaper --selftest                             # asserts on the pipeline
 AIW_MAP=map.heic .build/release/AIWallpaper --generate photo.jpg out.heic
+AIW_SKY=sky.heic .build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night
 ```
 
-The last one writes the brightness factor map next to the result, which is the
-fastest way to see what the engine decided.
+The last two write the brightness factor map and the sky mask next to the
+result, which is the fastest way to see what the engine decided.
 
 ## Contributing
 

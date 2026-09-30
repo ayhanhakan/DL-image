@@ -10,7 +10,13 @@ import Vision
 /// Core Image's linear working space -> HEIC.
 enum DarkVariant {
 
-    static let algorithmVersion = 2
+    static let algorithmVersion = 3
+
+    /// How far the dark variant goes: a dimmed version of the same daylight, or
+    /// the same scene at night.
+    enum Style: String, CaseIterable {
+        case dim, night
+    }
 
     static let context = CIContext(options: [.cacheIntermediates: false])
 
@@ -18,7 +24,8 @@ enum DarkVariant {
     /// Debug hook: set to a URL to dump the brightness factor map.
     nonisolated(unsafe) static var debugMapURL: URL?
 
-    static func make(from input: CIImage, darkness: Double) throws -> CIImage {
+    static func make(from input: CIImage, darkness: Double, style: Style = .dim) throws -> CIImage {
+        if style == .night { return try NightGrade.make(from: input, darkness: darkness) }
         let size = input.extent.size
         // Regional, not per-pixel: a blur the size of a few percent of the image
         // keeps the map smooth so no edge shows up in the result.
@@ -136,14 +143,14 @@ enum DarkVariant {
     /// Generates `dark.heic` for `original`, or returns the cached file when the
     /// same image and settings were rendered before.
     @discardableResult
-    static func generate(from original: URL, darkness: Double) throws -> URL {
-        let output = cacheURL(for: original, darkness: darkness)
+    static func generate(from original: URL, darkness: Double, style: Style = .dim) throws -> URL {
+        let output = cacheURL(for: original, darkness: darkness, style: style)
         if FileManager.default.fileExists(atPath: output.path) { return output }
 
         guard let input = CIImage(contentsOf: original) else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        let dark = try make(from: input, darkness: darkness)
+        let dark = try make(from: input, darkness: darkness, style: style)
         try write(dark, to: output)
         return output
     }
@@ -162,12 +169,12 @@ enum DarkVariant {
             .appendingPathComponent("AIWallpaper", isDirectory: true)
     }
 
-    static func cacheURL(for original: URL, darkness: Double) -> URL {
+    static func cacheURL(for original: URL, darkness: Double, style: Style) -> URL {
         let hash = (try? Data(contentsOf: original)).map {
             SHA256.hash(data: $0).prefix(8).map { String(format: "%02x", $0) }.joined()
         } ?? UUID().uuidString
         let level = Int((darkness * 100).rounded())
         return supportDirectory
-            .appendingPathComponent("\(hash)-v\(algorithmVersion)-d\(level).heic")
+            .appendingPathComponent("\(hash)-v\(algorithmVersion)-\(style.rawValue)-d\(level).heic")
     }
 }

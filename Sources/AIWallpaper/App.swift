@@ -43,6 +43,13 @@ struct MenuView: View {
 
             Button("Select wallpaper…") { manager.selectWallpaper() }
 
+            Picker("", selection: $manager.style) {
+                Text("Dim").tag(DarkVariant.Style.dim)
+                Text("Night").tag(DarkVariant.Style.night)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Darkness")
                 Slider(value: $manager.darkness, in: 0.2...0.9)

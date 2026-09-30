@@ -15,6 +15,10 @@ final class WallpaperManager: ObservableObject {
     @Published var darkness = UserDefaults.standard.object(forKey: "darkness") as? Double ?? 0.55 {
         didSet { UserDefaults.standard.set(darkness, forKey: "darkness"); apply() }
     }
+    @Published var style = DarkVariant.Style(
+        rawValue: UserDefaults.standard.string(forKey: "style") ?? "") ?? .dim {
+        didSet { UserDefaults.standard.set(style.rawValue, forKey: "style"); apply() }
+    }
     @Published var followsAppearance = UserDefaults.standard.object(forKey: "follows") as? Bool ?? true {
         didSet { UserDefaults.standard.set(followsAppearance, forKey: "follows"); apply() }
     }
@@ -70,9 +74,10 @@ final class WallpaperManager: ObservableObject {
         }
         status = "Generating dark version…"
         let level = darkness
+        let style = style
         Task.detached(priority: .userInitiated) {
             do {
-                let dark = try DarkVariant.generate(from: original, darkness: level)
+                let dark = try DarkVariant.generate(from: original, darkness: level, style: style)
                 await MainActor.run {
                     self.set(dark)
                     self.status = "Dark Mode: generated wallpaper"

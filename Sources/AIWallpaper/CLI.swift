@@ -8,12 +8,17 @@ enum CLI {
     static func generate() {
         var args = Array(CommandLine.arguments.dropFirst(2))
         guard !args.isEmpty else {
-            print("usage: AIWallpaper --generate <input> [output.heic] [darkness 0-1]")
+            print("usage: AIWallpaper --generate <input> [output.heic] [darkness 0-1] [dim|night]")
             exit(2)
         }
         let input = URL(fileURLWithPath: args.removeFirst())
         let output = args.first.flatMap { $0.hasSuffix(".heic") ? URL(fileURLWithPath: args.removeFirst()) : nil }
+        let style = DarkVariant.Style(rawValue: args.last ?? "") ?? .dim
+        if DarkVariant.Style(rawValue: args.last ?? "") != nil { args.removeLast() }
         let darkness = args.first.flatMap(Double.init) ?? 0.55
+        if let sky = ProcessInfo.processInfo.environment["AIW_SKY"] {
+            NightGrade.debugSkyURL = URL(fileURLWithPath: sky)
+        }
         if let map = ProcessInfo.processInfo.environment["AIW_MAP"] {
             DarkVariant.debugMapURL = URL(fileURLWithPath: map)
         }
@@ -22,10 +27,10 @@ enum CLI {
             let url: URL
             if let output {
                 guard let image = CIImage(contentsOf: input) else { throw CocoaError(.fileReadCorruptFile) }
-                try DarkVariant.write(DarkVariant.make(from: image, darkness: darkness), to: output)
+                try DarkVariant.write(DarkVariant.make(from: image, darkness: darkness, style: style), to: output)
                 url = output
             } else {
-                url = try DarkVariant.generate(from: input, darkness: darkness)
+                url = try DarkVariant.generate(from: input, darkness: darkness, style: style)
             }
             print(url.path)
             if let image = CIImage(contentsOf: input), let result = CIImage(contentsOf: url) {
@@ -71,6 +76,11 @@ enum CLI {
         // Hue survives: the orange half stays orange rather than turning grey.
         let (r, g, b) = rgb(out, CGRect(x: 450, y: 50, width: 300, height: 300))
         assert(r > g && g > b, "hue order lost: \(r) \(g) \(b)")
+
+        // Night has to cool the image down: a warm subject comes back blue led.
+        let night = try! DarkVariant.make(from: input, darkness: 0.6, style: .night)
+        let (nr, _, nb) = rgb(night, CGRect(x: 450, y: 50, width: 300, height: 300))
+        assert(nb > nr, "night grade left the warm cast in place: \(nr) \(nb)")
 
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("selftest.heic")
         try! DarkVariant.write(out, to: tmp)
