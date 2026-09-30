@@ -126,8 +126,8 @@ Apple frameworks only, no third-party dependencies.
 ## Install
 
 ```sh
-git clone https://github.com/ayhanhakan/ai-wallpaper-dark-mode.git
-cd ai-wallpaper-dark-mode
+git clone https://github.com/ayhanhakan/DL-image.git
+cd DL-image
 ./make-app.sh
 cp -R .build/AIWallpaper.app /Applications/
 open /Applications/AIWallpaper.app
