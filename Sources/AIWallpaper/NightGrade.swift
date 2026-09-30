@@ -15,7 +15,8 @@ enum NightGrade {
     static let shadowColor = (r: 0.07, g: 0.09, b: 0.18)
     static let highlightColor = (r: 0.86, g: 0.89, b: 0.97)
 
-    static func make(from input: CIImage, darkness: Double) throws -> CIImage {
+    static func make(from input: CIImage, darkness: Double,
+                     maps: Segmentation.Maps? = nil) throws -> CIImage {
         // 1. Luminance of the original, pulled down with a gamma curve. Lit
         //    surfaces stay readable, shadows fall away.
         let lum = DarkVariant.luminanceMap(of: input)
@@ -37,19 +38,41 @@ enum NightGrade {
         var night = mix(moonlit, with: residue, amount: 0.35)
 
         // 4. Swap the daylight sky for a night one.
-        let mask = skyMask(of: input)
+        let mask = maps.map { skyMask(of: input, segmented: $0.sky) } ?? skyMask(of: input)
         night = blend(nightSky(for: input), over: night, mask: mask)
+
+        // 5. People and lamps keep their own light, dimmed but not regraded, so
+        //    faces still read as faces.
+        if let maps {
+            let lit = input
+                .applyingFilter("CIColorControls", parameters: ["inputSaturation": 0.80])
+                .applyingFilter("CIExposureAdjust", parameters: ["inputEV": -1.0 - 0.8 * darkness])
+            night = blend(lit, over: night, mask: maps.protected)
+        }
 
         return night.cropped(to: input.extent)
     }
 
     // MARK: - Sky
 
-    /// Heuristic sky: bright, blue, high in the frame, smooth.
-    ///
-    /// ponytail: good enough for landscape wallpapers. A real segmentation model
-    /// (ADE20K class 2) is the v2 plan and would also catch sunset skies.
     nonisolated(unsafe) static var debugSkyURL: URL?
+
+    /// The segmented sky, widened by the blue heuristic.
+    ///
+    /// The model finds sunset and overcast skies the heuristic misses, and the
+    /// heuristic catches the thin bright gaps between branches and rooftops that
+    /// a 448 pixel map rounds off. Whichever claims a pixel wins.
+    static func skyMask(of image: CIImage, segmented: CIImage) -> CIImage {
+        let widened = DarkVariant.multiply(
+            DarkVariant.scale(segmented, by: -1, bias: 1),
+            DarkVariant.scale(skyMask(of: image), by: -1, bias: 1))
+        let mask = clamp(DarkVariant.scale(widened, by: -1, bias: 1)).cropped(to: image.extent)
+        if let debugSkyURL { try? DarkVariant.write(mask, to: debugSkyURL) }
+        return mask
+    }
+
+    /// Heuristic sky: blue, high in the frame, smooth. Still here as the fallback
+    /// for when the model cannot run, and as a widener next to it.
 
     static func skyMask(of image: CIImage) -> CIImage {
         let blueness = image.applyingFilter("CIColorMatrix", parameters: [
@@ -73,21 +96,22 @@ enum NightGrade {
         let mask = DarkVariant.blur(
             clamp(DarkVariant.scale(masked, by: 1.6, bias: 0.0)).cropped(to: image.extent),
             radius: Float(min(image.extent.width, height) / 120))
-        if let debugSkyURL { try? DarkVariant.write(mask, to: debugSkyURL) }
         return mask
     }
 
     static func nightSky(for image: CIImage) -> CIImage {
         let extent = image.extent
-        // Clouds and gradients of the original sky survive as brightness.
+        // Clouds and gradients of the original sky survive as brightness. The
+        // mask covers the whole sky now, so this is the only thing keeping the
+        // clouds in the picture.
         let structure = DarkVariant.scale(
-            DarkVariant.luminanceMap(of: image), by: 0.55, bias: 0.55)
+            DarkVariant.luminanceMap(of: image), by: 1.00, bias: 0.40)
 
         let gradient = CIFilter.linearGradient()
         gradient.point0 = CGPoint(x: 0, y: extent.height)
-        gradient.color0 = linear(0.03, 0.04, 0.11)
-        gradient.point1 = CGPoint(x: 0, y: extent.height * 0.35)
-        gradient.color1 = linear(0.10, 0.13, 0.24)
+        gradient.color0 = srgb(0.07, 0.08, 0.16)
+        gradient.point1 = CGPoint(x: 0, y: extent.height * 0.45)
+        gradient.color1 = srgb(0.18, 0.21, 0.32)
 
         // ponytail: no stars. Thresholded CIRandomGenerator reads as grain at
         // wallpaper resolution; real points need a sprite pass, and the sky
@@ -138,7 +162,10 @@ enum NightGrade {
         CGFloat(c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4))
     }
 
-    static func linear(_ r: Double, _ g: Double, _ b: Double) -> CIColor {
-        CIColor(red: linearize(r), green: linearize(g), blue: linearize(b), alpha: 1)
+    /// CIColor takes sRGB values and Core Image linearizes them on the way in,
+    /// so these go in as written. Matrix coefficients are the other case: those
+    /// act on linear light and have to be converted by hand.
+    static func srgb(_ r: Double, _ g: Double, _ b: Double) -> CIColor {
+        CIColor(red: r, green: g, blue: b, alpha: 1)
     }
 }

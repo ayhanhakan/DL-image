@@ -27,6 +27,13 @@ final class WallpaperManager: ObservableObject {
         didSet { UserDefaults.standard.set(original?.path, forKey: "original") }
     }
 
+    /// A Dark Mode image the user supplied. When it is set, nothing is
+    /// generated: some photos have a real night version, and a real one beats
+    /// anything the engine can infer.
+    @Published private(set) var darkImage: URL? {
+        didSet { UserDefaults.standard.set(darkImage?.path, forKey: "darkImage") }
+    }
+
     init() {
         let stored = UserDefaults.standard.string(forKey: "original").map(URL.init(fileURLWithPath:))
         let onScreen = NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0) }
@@ -34,6 +41,10 @@ final class WallpaperManager: ObservableObject {
         // wallpaper on every launch, so generated files are never picked up.
         original = [stored, onScreen].compactMap { $0 }.first { Self.isUsableOriginal($0) }
         UserDefaults.standard.set(original?.path, forKey: "original")
+        let supplied = UserDefaults.standard.string(forKey: "darkImage")
+        darkImage = supplied.flatMap {
+            FileManager.default.isReadableFile(atPath: $0) ? URL(fileURLWithPath: $0) : nil
+        }
         DistributedNotificationCenter.default.addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil, queue: .main
@@ -53,13 +64,29 @@ final class WallpaperManager: ObservableObject {
     }
 
     func selectWallpaper() {
+        guard let url = pickImage() else { return }
+        original = url
+        apply()
+    }
+
+    func selectDarkImage() {
+        guard let url = pickImage() else { return }
+        darkImage = url
+        apply()
+    }
+
+    func clearDarkImage() {
+        darkImage = nil
+        apply()
+    }
+
+    private func pickImage() -> URL? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        original = url
-        apply()
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
     }
 
     func apply() {
@@ -70,6 +97,11 @@ final class WallpaperManager: ObservableObject {
         guard followsAppearance, Self.isDarkMode else {
             status = "Light Mode: original wallpaper"
             set(original)
+            return
+        }
+        if let darkImage {
+            status = "Dark Mode: your image"
+            set(darkImage)
             return
         }
         status = "Generating dark version…"

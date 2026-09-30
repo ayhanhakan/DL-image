@@ -42,6 +42,18 @@ enum CLI {
         }
     }
 
+    /// `AIWallpaper --classes <image>` lists what the model saw, for tuning the
+    /// weight table.
+    static func classes() {
+        guard let image = CIImage(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])) else {
+            exit(2)
+        }
+        for (name, share) in Segmentation.histogram(for: image) where share > 0.002 {
+            print(String(format: "%6.2f%%  %@", share * 100, name))
+        }
+        exit(0)
+    }
+
     static func probe() {
         let url = URL(fileURLWithPath: CommandLine.arguments[2])
         let img = CIImage(contentsOf: url)!
@@ -81,6 +93,14 @@ enum CLI {
         let night = try! DarkVariant.make(from: input, darkness: 0.6, style: .night)
         let (nr, _, nb) = rgb(night, CGRect(x: 450, y: 50, width: 300, height: 300))
         assert(nb > nr, "night grade left the warm cast in place: \(nr) \(nb)")
+
+        // Segmentation has to stay wired: a broken model silently falls back to
+        // luminance only darkening, which still produces a plausible image.
+        let photo = CIImage(color: CIColor(red: 0.4, green: 0.55, blue: 0.85))
+            .cropped(to: CGRect(x: 0, y: 0, width: 800, height: 400))
+        assert(Segmentation.classify(photo)?.count == Segmentation.side * Segmentation.side,
+               "segmentation model did not return a full map")
+        assert(Segmentation.maps(for: photo) != nil, "segmentation maps missing")
 
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("selftest.heic")
         try! DarkVariant.write(out, to: tmp)

@@ -8,6 +8,7 @@ enum Entry {
         case "--generate": CLI.generate()
         case "--selftest": CLI.selftest()
         case "--probe": CLI.probe()
+        case "--classes": CLI.classes()
         default: AIWallpaperApp.main()
         }
     }
@@ -43,16 +44,22 @@ struct MenuView: View {
 
             Button("Select wallpaper…") { manager.selectWallpaper() }
 
-            Picker("", selection: $manager.style) {
-                Text("Dim").tag(DarkVariant.Style.dim)
-                Text("Night").tag(DarkVariant.Style.night)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            if manager.darkImage == nil {
+                Button("Use my own dark image…") { manager.selectDarkImage() }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Darkness")
-                Slider(value: $manager.darkness, in: 0.2...0.9)
+                Picker("", selection: $manager.style) {
+                    Text("Dim").tag(DarkVariant.Style.dim)
+                    Text("Night").tag(DarkVariant.Style.night)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Darkness")
+                    Slider(value: $manager.darkness, in: 0.2...0.9)
+                }
+            } else {
+                Button("Back to the generated one") { manager.clearDarkImage() }
             }
 
             Toggle("Follow Dark Mode", isOn: $manager.followsAppearance)

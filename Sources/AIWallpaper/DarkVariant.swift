@@ -6,11 +6,11 @@ import Vision
 
 /// Generates the Dark Mode version of a wallpaper.
 ///
-/// Pipeline: luminance map + saliency map -> darkness map -> multiply in
-/// Core Image's linear working space -> HEIC.
+/// Pipeline: semantic segmentation + luminance map + saliency map -> darkness
+/// map -> multiply in Core Image's linear working space -> HEIC.
 enum DarkVariant {
 
-    static let algorithmVersion = 3
+    static let algorithmVersion = 4
 
     /// How far the dark variant goes: a dimmed version of the same daylight, or
     /// the same scene at night.
@@ -25,7 +25,10 @@ enum DarkVariant {
     nonisolated(unsafe) static var debugMapURL: URL?
 
     static func make(from input: CIImage, darkness: Double, style: Style = .dim) throws -> CIImage {
-        if style == .night { return try NightGrade.make(from: input, darkness: darkness) }
+        let maps = Segmentation.maps(for: input)
+        if style == .night {
+            return try NightGrade.make(from: input, darkness: darkness, maps: maps)
+        }
         let size = input.extent.size
         // Regional, not per-pixel: a blur the size of a few percent of the image
         // keeps the map smooth so no edge shows up in the result.
@@ -39,8 +42,14 @@ enum DarkVariant {
         // Kept gentle on purpose: a strong saliency weight reads as a vignette,
         // because attention maps are center heavy on most photos.
         let bySaliency = scale(saliency, by: -0.25, bias: 1.0)     // 0.75 ... 1.00
-        var factor = multiply(byLuminance, bySaliency)
-        factor = scale(factor, by: -darkness, bias: 1.0)           // brightness factor
+        var amount = multiply(byLuminance, bySaliency)
+        // What the surface is decides more than how bright it is: sky and faces
+        // hold their light, foliage and lit facades give theirs up.
+        if let maps { amount = multiply(amount, maps.weight) }
+        // Sparing the sky takes most of the darkening out of a landscape, since
+        // the sky is both the brightest and the largest part of it. The slider
+        // pushes harder to make up for it.
+        var factor = scale(amount, by: -darkness * 1.5, bias: 1.0)  // brightness factor
         factor = multiply(factor, dockGradient(size: size))
         // Never go fully black: detail has to survive the darkest setting.
         factor = factor.applyingFilter("CIColorClamp", parameters: [

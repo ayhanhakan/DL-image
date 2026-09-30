@@ -3,9 +3,9 @@
 A macOS menu bar utility that generates a dark version of your own wallpaper
 and swaps it in when the system switches to Dark Mode.
 
-> **Status: v1 works.** The menu bar app generates the dark variant and swaps it
-> as the system appearance changes. Semantic segmentation and the Core ML work
-> are still ahead. See [docs/PLAN.md](docs/PLAN.md) for the full design.
+> **Status: v1 works.** The menu bar app segments the picture, generates the
+> dark variant and swaps it as the system appearance changes. See
+> [docs/PLAN.md](docs/PLAN.md) for the full design.
 
 ## Why
 
@@ -53,7 +53,7 @@ Luminance analysis      how bright is each region
     ↓
 Saliency detection      where does the eye land
     ↓
-Semantic segmentation   sky, building, person, foreground   (v2)
+Semantic segmentation   sky, tree, building, water, person
     ↓
 Desktop zone awareness  dock, menu bar, icon columns
     ↓
@@ -64,11 +64,43 @@ Local tone mapping      lightness down, chroma and hue kept
 dark.heic
 ```
 
-Two details carry most of the quality. Color is edited in a perceptual space
-rather than RGB: lightness comes down while chroma and hue stay where they are,
-so a blue sky becomes a dark blue sky instead of grey. And salient regions are
-protected, so faces, people and the main subject get a lighter touch than the
-background and the photo stays readable.
+Two details carry most of the quality. The engine edits color in a perceptual
+space: lightness comes down while chroma and hue stay where they are, so a blue
+sky becomes a dark blue sky and never grey. It also spares the salient regions,
+so faces and the main subject get a lighter touch than the background and the
+photo stays readable.
+
+## What it sees
+
+A Core ML segmentation model labels every pixel before anything is darkened. The
+model is DETR ResNet-50 panoptic, the conversion Apple publishes, running on 200
+COCO classes. Each class carries its own share of the darkening:
+
+| Class | Share |
+| --- | --- |
+| Sky | 0.40 |
+| Snow, sea, river, water | 0.55 to 0.65 |
+| Sand, mountain, rock, dirt | 0.85 to 0.95 |
+| Grass, tree, potted plant | 1.15 to 1.20 |
+| Building, house, roof, wall | 1.25 to 1.30 |
+| Lamps and other light sources | 0.12 |
+
+So a landscape keeps its sky and loses its foreground, and a city keeps its lit
+windows while the facades around them go down. People are the one class the
+model gets wrong often enough to matter. They come from Vision's person
+segmentation instead, and they keep their daylight look in both modes.
+
+The night sky mask is the segmented sky widened by a blue heuristic. The model
+finds overcast and sunset skies the heuristic misses, and the heuristic catches
+the thin gaps between branches and rooftops that a 448 pixel map rounds off.
+
+## Your own dark image
+
+Some photos already have a night version, and a real one beats anything the
+engine can infer. Pick it under "Use my own dark image" and nothing is
+generated: Light Mode shows the original, Dark Mode shows yours. That is what
+[Umbra](https://exsesx.dev/blog/en/umbra-light-dark-wallpapers) does, and it is
+the way out when the generated version is not what you wanted.
 
 The original file is never modified. Both versions live side by side:
 
@@ -97,21 +129,23 @@ switching to Dark Mode only swaps a file instead of rendering one.
 - [x] Cache
 - [x] Multi-monitor
 - [x] Night mode: day for night grade and sky replacement
+- [x] Semantic segmentation (Core ML) with per class darkening
+- [x] Person protection (Vision)
+- [x] Supply your own dark image
 - [ ] Preview before applying
 - [ ] Launch at login
 
 **v2: image understanding**
 
-- [ ] Semantic segmentation
 - [ ] Face and object detection
-- [x] Sky detection (heuristic; a real model is still v2 work)
 - [ ] Foreground/background separation
 - [ ] Desktop icon area optimization
 - [ ] Local contrast preservation
+- [ ] Per display settings
 
 **v3: beyond Dark Mode**
 
-- [ ] Core ML model for segmentation, saliency and depth in one pass
+- [ ] One model for segmentation, saliency and depth in a single pass
 - [ ] Ambience modes: day, sunset, night, deep night
 
 No generative AI in v1 or v2. The goal is the same photo in the dark, and a
@@ -154,16 +188,21 @@ Requires macOS 14 and a Swift 6 toolchain. There is no Xcode project: the app is
 a Swift package, and `make-app.sh` wraps the binary in a menu bar only bundle.
 
 The icon appears in the menu bar with the current status, a wallpaper picker, a
-darkness slider and a switch for following the system appearance. On first
-launch it adopts the wallpaper already on the desktop.
+Dim/Night switch, a darkness slider, a slot for your own dark image and a switch
+for following the system appearance. On first launch it adopts the wallpaper
+already on the desktop.
+
+The segmentation model ships inside the app, about 40 MB. It is compiled once on
+first run into `~/Library/Application Support/AIWallpaper/`.
 
 The same binary runs without the UI, which is how the darkening is tuned:
 
 ```sh
-.build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night   # dim | night
-.build/release/AIWallpaper --generate photo.jpg out.heic 0.55   # prints mean luma before and after
-.build/release/AIWallpaper --probe out.heic                     # edge and center samples
-.build/debug/AIWallpaper --selftest                             # asserts on the pipeline
+.build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night  # dim | night
+.build/release/AIWallpaper --generate photo.jpg out.heic 0.55        # mean luma before and after
+.build/release/AIWallpaper --probe out.heic                          # edge and center samples
+.build/release/AIWallpaper --classes photo.jpg                       # what the model saw
+.build/debug/AIWallpaper --selftest                                  # asserts on the pipeline
 AIW_MAP=map.heic .build/release/AIWallpaper --generate photo.jpg out.heic
 AIW_SKY=sky.heic .build/release/AIWallpaper --generate photo.jpg out.heic 0.55 night
 ```
