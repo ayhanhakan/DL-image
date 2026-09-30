@@ -63,8 +63,8 @@ final class WallpaperManager: ObservableObject {
         watch()
     }
 
-    /// Wallpaper rotators like Irvue put a new photo on the desktop on their own
-    /// schedule and there is no notification for it, so the desktop is polled.
+    /// Wallpaper rotators put a new photo on the desktop on their own schedule
+    /// and there is no notification for it, so the desktop is polled.
     /// Whatever they set becomes the new original and gets its own dark version.
     private func watch() {
         watcher = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in

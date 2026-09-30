@@ -96,19 +96,18 @@ the thin gaps between branches and rooftops that a 448 pixel map rounds off.
 
 ## Wallpaper rotators
 
-If something else changes your wallpaper on a schedule, like
-[Irvue](https://irvue.tumblr.com), the app takes whatever it finds on the
-desktop as the new original and generates a dark version for it. macOS sends no
-notification when the wallpaper changes, so the desktop is checked every 20
-seconds. Generated files are skipped, so the app never darkens its own output.
+If another app changes your wallpaper on a schedule, the app takes whatever it
+finds on the desktop as the new original and generates a dark version for it.
+macOS sends no notification when the wallpaper changes, so the desktop is
+checked every 20 seconds. Generated files are skipped, so the app never darkens
+its own output.
 
 ## Your own dark image
 
 Some photos already have a night version, and a real one beats anything the
 engine can infer. Pick it under "Use my own dark image" and nothing is
-generated: Light Mode shows the original, Dark Mode shows yours. That is what
-[Umbra](https://exsesx.dev/blog/en/umbra-light-dark-wallpapers) does, and it is
-the way out when the generated version is not what you wanted.
+generated: Light Mode shows the original, Dark Mode shows yours. It is the way
+out when the generated version is not what you wanted.
 
 The original file is never modified. Both versions live side by side:
 
