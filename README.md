@@ -3,8 +3,9 @@
 A macOS menu bar utility that generates a dark version of your own wallpaper
 and swaps it in when the system switches to Dark Mode.
 
-> **Status: design stage.** The plan is written, the code is not. See
-> [docs/PLAN.md](docs/PLAN.md) and the [roadmap](#roadmap). Contributions welcome.
+> **Status: v1 works.** The menu bar app generates the dark variant and swaps it
+> as the system appearance changes. Semantic segmentation and the Core ML work
+> are still ahead. See [docs/PLAN.md](docs/PLAN.md) for the full design.
 
 ## Why
 
@@ -68,17 +69,19 @@ switching to Dark Mode only swaps a file instead of rendering one.
 
 **v1: MVP**
 
-- [ ] Menu bar app (`MenuBarExtra`)
-- [ ] Wallpaper picker and preview
-- [ ] Light/Dark appearance detection
-- [ ] Store the original
-- [ ] Luminance analysis
-- [ ] Saliency analysis (Vision)
-- [ ] Darkness map and tone mapping
-- [ ] HEIC export
-- [ ] Set the desktop image (`NSWorkspace`)
-- [ ] Cache
-- [ ] Multi-monitor
+- [x] Menu bar app (`MenuBarExtra`)
+- [x] Wallpaper picker
+- [x] Light/Dark appearance detection
+- [x] Store the original
+- [x] Luminance analysis
+- [x] Saliency analysis (Vision)
+- [x] Darkness map and tone mapping
+- [x] HEIC export
+- [x] Set the desktop image (`NSWorkspace`)
+- [x] Cache
+- [x] Multi-monitor
+- [ ] Preview before applying
+- [ ] Launch at login
 
 **v2: image understanding**
 
@@ -120,16 +123,34 @@ Accelerate · ImageIO · AppKit
 
 Apple frameworks only, no third-party dependencies.
 
-## Build
+## Install
 
 ```sh
 git clone https://github.com/ayhanhakan/ai-wallpaper-dark-mode.git
 cd ai-wallpaper-dark-mode
-open AIWallpaper.xcodeproj
+./make-app.sh
+cp -R .build/AIWallpaper.app /Applications/
+open /Applications/AIWallpaper.app
 ```
 
-Requires macOS 14 and Xcode 15 or newer. (The Xcode project lands with the
-first v1 commit.)
+Requires macOS 14 and a Swift 6 toolchain. There is no Xcode project: the app is
+a Swift package, and `make-app.sh` wraps the binary in a menu bar only bundle.
+
+The icon appears in the menu bar with the current status, a wallpaper picker, a
+darkness slider and a switch for following the system appearance. On first
+launch it adopts the wallpaper already on the desktop.
+
+The same binary runs without the UI, which is how the darkening is tuned:
+
+```sh
+.build/release/AIWallpaper --generate photo.jpg out.heic 0.55   # prints mean luma before and after
+.build/release/AIWallpaper --probe out.heic                     # edge and center samples
+.build/debug/AIWallpaper --selftest                             # asserts on the pipeline
+AIW_MAP=map.heic .build/release/AIWallpaper --generate photo.jpg out.heic
+```
+
+The last one writes the brightness factor map next to the result, which is the
+fastest way to see what the engine decided.
 
 ## Contributing
 
