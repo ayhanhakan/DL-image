@@ -197,8 +197,8 @@ Requires macOS 14 and a Swift 6 toolchain. There is no Xcode project: the app is
 a Swift package, and `make-app.sh` wraps the binary in a menu bar only bundle.
 
 The icon appears in the menu bar with the current status, a wallpaper picker, a
-Dim/Night switch, a darkness slider, a slot for your own dark image and a switch
-for following the system appearance. On first launch it adopts the wallpaper
+Dim/Night switch, a darkness slider, a slot for your own dark image and
+switches for following the system appearance and opening at login. On first launch it adopts the wallpaper
 already on the desktop.
 
 The segmentation model ships inside the app, about 40 MB. It is compiled once on
